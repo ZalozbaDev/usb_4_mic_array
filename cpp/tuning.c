@@ -1,12 +1,12 @@
 
 #include <libusb-1.0/libusb.h>
-#include <cstdint>
-#include <cstdio>
+#include <stdint.h>
+#include <stdio.h>
 
 #define VENDOR_ID  0x2886
 #define PRODUCT_ID 0x0018
 
-bool find_usb_device(
+int find_usb_device(
 	libusb_device_handle **devHandle, 
 	libusb_context **context, 
 	uint8_t *interfaceNumber, 
@@ -118,7 +118,7 @@ bool find_usb_device(
 	// device was openend or not does not matter
 	libusb_free_device_list(devicelist, 1);
 
-	return true;
+	return 1;
 
 error_out_usbdevlist:
 
@@ -132,7 +132,7 @@ error_out_usbcontext:
 
 error_out:
 
-	return false;
+	return 0;
   
 }
 
@@ -143,11 +143,11 @@ int main(void)
 	libusb_device_handle *devHandle; 
 	libusb_context       *context;
 	uint8_t              interfaceNumber; 
-	bool success;
+	int success;
 	
 	success = find_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
 	
-	printf("Open status: %s.\n", (success != false) ? "TRUE" : "FALSE");
+	printf("Open status: %s.\n", (success != 0) ? "TRUE" : "FALSE");
 	
 	return 0;
 }

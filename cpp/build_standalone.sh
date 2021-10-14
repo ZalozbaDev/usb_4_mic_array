@@ -2,4 +2,4 @@
 
 rm -f test
 
-g++ -DSTANDALONE_BUILD -o test -g tuning.cpp -lusb-1.0
+gcc -DSTANDALONE_BUILD -o test -g tuning.c -lusb-1.0
