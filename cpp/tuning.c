@@ -168,6 +168,20 @@ int vendor_request(libusb_device_handle *devHandle,
 	return status;
 }
 
+void control_cb(struct libusb_transfer *transfer)
+{
+	printf("Control callback received!\n");
+	
+	unsigned char *buf = libusb_control_transfer_get_data(transfer);
+	
+	for (int f = 0; f < 8; f++)
+	{
+		printf("%02X ", buf[f]);
+	}
+	printf("\n");
+	
+}
+
 #ifdef STANDALONE_BUILD
 
 int main(void)
@@ -180,7 +194,8 @@ int main(void)
 	success = find_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
 	
 	printf("Open status: %s.\n", (success != 0) ? "TRUE" : "FALSE");
-	
+
+#if 0	
 	for (int i = 0; i < 10000; i++)
 	{
 		uint8_t buffer[8];
@@ -204,6 +219,63 @@ int main(void)
 		}
 		printf("\n");
 	}
+#endif
+
+	struct libusb_transfer *transfer;
+	int status;
+	
+	for (int i = 0; i < 10000; i++)
+	{
+		unsigned char buf[16];
+		uint16_t command;
+		uint16_t id;
+		
+		memset(&buf, 0, 16);
+		command = 32;
+		command |= 0x80;
+		command |= 0x40;
+		
+		id = 19;
+		
+		transfer = libusb_alloc_transfer(0);
+		
+		if (transfer == NULL)
+		{
+			printf("Error allocating transfer!!!\n");	
+		}
+		
+		libusb_fill_control_setup(buf, 
+			LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_IN,
+			0x00,
+			command,
+			id,
+			8);
+		
+		libusb_fill_control_transfer(transfer,
+			devHandle,
+			buf,
+			control_cb,
+			NULL,
+			1000);
+		
+		status = libusb_submit_transfer(transfer);
+		
+		printf("Submit success = %s. ", (success != 0) ? "TRUE" : "FALSE");
+		
+		//for (int z = 0; z < 100; z++)
+		//{
+			status = libusb_handle_events(context);
+			if (status != 0)
+			{
+				printf("Handle events error: %d\n", status);
+			}
+		//}
+		
+		libusb_free_transfer(transfer);
+	}
+
+    libusb_close(devHandle);
+	libusb_exit(context);
 	
 	return 0;
 }
