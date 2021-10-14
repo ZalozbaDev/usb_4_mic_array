@@ -2,6 +2,7 @@
 #include <libusb-1.0/libusb.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define VENDOR_ID  0x2886
 #define PRODUCT_ID 0x0018
@@ -136,6 +137,37 @@ error_out:
   
 }
 
+int vendor_request(libusb_device_handle *devHandle, 
+  uint8_t direction, 
+  uint16_t command,
+  uint16_t id,
+  uint8_t *buffer, 
+  uint16_t length)
+{
+	int status;
+	
+	uint8_t requestType =  LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_VENDOR | ((direction == 0) ? LIBUSB_ENDPOINT_OUT : LIBUSB_ENDPOINT_IN);
+	int size;
+	
+	size = libusb_control_transfer(devHandle, 
+				 requestType, // bmRequestType
+				 0x00, // bmRequest
+				 command, // wValue
+				 id, // wIndex
+				 buffer,
+				 length,
+				 1000);
+
+	if (size == length) {
+		status = 1;
+	} else {
+		printf("Return value of vendor request is %d.\n", size);
+		status = 0;
+	}
+	
+	return status;
+}
+
 #ifdef STANDALONE_BUILD
 
 int main(void)
@@ -148,6 +180,30 @@ int main(void)
 	success = find_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
 	
 	printf("Open status: %s.\n", (success != 0) ? "TRUE" : "FALSE");
+	
+	for (int i = 0; i < 10000; i++)
+	{
+		uint8_t buffer[8];
+		uint16_t command;
+		uint16_t id;
+		
+		memset(&buffer, 0, 8);
+		command = 32;
+		command |= 0x80;
+		command |= 0x40;
+		
+		id = 19;
+		
+		success = vendor_request(devHandle, 1, command, id, buffer, 8);
+		
+		printf("Success = %s. ", (success != 0) ? "TRUE" : "FALSE");
+		
+		for (int f = 0; f < 8; f++)
+		{
+			printf("%02X ", buffer[f]);
+		}
+		printf("\n");
+	}
 	
 	return 0;
 }
