@@ -1,13 +1,15 @@
 
-#include <libusb-1.0/libusb.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/time.h>
 
 #define VENDOR_ID  0x2886
 #define PRODUCT_ID 0x0018
 
-int find_usb_device(
+#include "tuning.h"
+
+int usb_mic_array__find_open_usb_device(
 	libusb_device_handle **devHandle, 
 	libusb_context **context, 
 	uint8_t *interfaceNumber, 
@@ -92,7 +94,7 @@ int find_usb_device(
 					libusb_free_config_descriptor(config_descriptor);
 				}
 			}
-
+			
 		// the device descriptor does not need to be free'd
 		}
 	}
@@ -111,7 +113,10 @@ int find_usb_device(
 				libusb_close(*devHandle);
 				goto error_out_usbdevlist;
 			}
-#endif				
+#endif
+			// libusb_set_configuration(*devHandle, 0);
+			// libusb_clear_halt(*devHandle, 0);
+			
 		}
 	}
 	
@@ -137,7 +142,100 @@ error_out:
   
 }
 
-int vendor_request(libusb_device_handle *devHandle, 
+static unsigned char vadbuf[16];
+static struct libusb_transfer *vadtransfer;
+static usb_mic_array__vad_cb_fn vad_cb;
+
+static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
+{
+	unsigned char *buf = libusb_control_transfer_get_data(transfer);
+
+	if (buf[0] != 0)
+	{
+		vad_cb(1);		
+	}
+	else
+	{
+		vad_cb(0);
+	}
+}
+
+int usb_mic_array__vad_request(
+	libusb_device_handle *devHandle,
+	usb_mic_array__vad_cb_fn callback
+	)
+{
+	uint16_t command;
+	uint16_t id;
+	int status;
+		
+	vad_cb = callback;
+	
+	memset(&vadbuf, 0, 16);
+	command = 32;
+	command |= 0x80;
+	command |= 0x40;
+	
+	id = 19;
+		
+	vadtransfer = libusb_alloc_transfer(0);
+		
+	if (vadtransfer == NULL)
+	{
+		printf("Error allocating transfer!!!\n");
+		status = -1;
+	}
+	else
+	{
+		libusb_fill_control_setup(vadbuf, 
+			LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_IN,
+			0x00,
+			command,
+			id,
+			8);
+		
+		libusb_fill_control_transfer(vadtransfer,
+			devHandle,
+			vadbuf,
+			usb_mic_array__vad_callback,
+			NULL,
+			1000);
+		
+		status = libusb_submit_transfer(vadtransfer);
+	}
+	
+	return status;
+}
+
+int usb_mic_array__vad_process(
+	libusb_context *context
+	)
+{
+	int status;
+	struct timeval tv;
+	tv.tv_sec = 0;
+	tv.tv_usec = 0;
+	
+	status = libusb_handle_events_timeout_completed(context, &tv, NULL);
+		
+	return status;
+}
+
+void usb_mic_array__vad_cleanup()
+{
+	libusb_free_transfer(vadtransfer);
+}
+
+int usb_mic_array__close_usb_device(
+	libusb_device_handle *devHandle,
+	libusb_context *context 
+	)
+{
+    libusb_close(devHandle);
+	libusb_exit(context);
+}
+
+static int vendor_request(libusb_device_handle *devHandle, 
   uint8_t direction, 
   uint16_t command,
   uint16_t id,
@@ -168,7 +266,7 @@ int vendor_request(libusb_device_handle *devHandle,
 	return status;
 }
 
-void control_cb(struct libusb_transfer *transfer)
+static void control_cb(struct libusb_transfer *transfer)
 {
 	printf("Control callback received!\n");
 	
@@ -184,6 +282,15 @@ void control_cb(struct libusb_transfer *transfer)
 
 #ifdef STANDALONE_BUILD
 
+static int vad_completed = 0;
+
+static void vad_status(int active)
+{
+	printf ("VAD status : %d\n", active);
+	
+	vad_completed = 1;
+}
+
 int main(void)
 {
 	libusb_device_handle *devHandle; 
@@ -191,7 +298,7 @@ int main(void)
 	uint8_t              interfaceNumber; 
 	int success;
 	
-	success = find_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
+	success = usb_mic_array__find_open_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
 	
 	printf("Open status: %s.\n", (success != 0) ? "TRUE" : "FALSE");
 
@@ -221,6 +328,7 @@ int main(void)
 	}
 #endif
 
+#if 0
 	struct libusb_transfer *transfer;
 	int status;
 	
@@ -260,7 +368,7 @@ int main(void)
 		
 		status = libusb_submit_transfer(transfer);
 		
-		printf("Submit success = %s. ", (success != 0) ? "TRUE" : "FALSE");
+		printf("Submit success = %s.\n", (success != 0) ? "TRUE" : "FALSE");
 		
 		//for (int z = 0; z < 100; z++)
 		//{
@@ -269,13 +377,43 @@ int main(void)
 			{
 				printf("Handle events error: %d\n", status);
 			}
-		//}
+		// }
 		
 		libusb_free_transfer(transfer);
 	}
 
     libusb_close(devHandle);
 	libusb_exit(context);
+	
+#endif
+
+	int status;
+
+	for (int i = 0; i < 500; i++)
+	{
+		vad_completed = 0;
+		
+		status = usb_mic_array__vad_request(devHandle, vad_status);
+		
+		if (status != 0)
+		{
+			printf("VAD request error!\n");	
+		}
+
+		while (vad_completed == 0)
+		{
+			status = usb_mic_array__vad_process(context);
+	
+			if (status != 0)
+			{
+				printf("VAD process error!\n");	
+			}
+		}
+		
+		usb_mic_array__vad_cleanup();
+	}
+	
+	usb_mic_array__close_usb_device(devHandle, context);
 	
 	return 0;
 }
