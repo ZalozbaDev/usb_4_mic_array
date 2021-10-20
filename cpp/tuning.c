@@ -7,6 +7,8 @@
 #define VENDOR_ID  0x2886
 #define PRODUCT_ID 0x0018
 
+// #define USB_MIC_ARRAY_VERBOSITY
+
 #include "tuning.h"
 
 int usb_mic_array__find_open_usb_device(
@@ -14,7 +16,8 @@ int usb_mic_array__find_open_usb_device(
 	libusb_context **context, 
 	uint8_t *interfaceNumber, 
 	uint16_t vendorId, 
-	uint16_t productId)
+	uint16_t productId,
+	uint8_t resetDevice)
 {
 	libusb_device **devicelist;
 	libusb_device *device;
@@ -116,7 +119,10 @@ int usb_mic_array__find_open_usb_device(
 #endif
 			// libusb_set_configuration(*devHandle, 0);
 			// libusb_clear_halt(*devHandle, 0);
-			
+			if (resetDevice != 0) 
+			{
+				libusb_reset_device(*devHandle);
+			}
 		}
 	}
 	
@@ -143,12 +149,28 @@ error_out:
 }
 
 static unsigned char vadbuf[16];
-static struct libusb_transfer *vadtransfer;
+static struct libusb_transfer *vadtransfer = NULL;
 static usb_mic_array__vad_cb_fn vad_cb;
 
 static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 {
 	unsigned char *buf = libusb_control_transfer_get_data(transfer);
+
+#ifdef USB_MIC_ARRAY_VERBOSITY
+	printf("usb_mic_array__vad_callback:\n");
+#endif	
+
+	// if the device is working properly, the last 4 bytes returned are non-zero
+
+	if ((buf[4] == 0) || (buf[5] == 0) || (buf[6] == 0) || (buf[7] == 0))
+	{
+		printf("Invalid vendor cmd response: ");
+		for (int f = 0; f < 8; f++)
+		{
+			printf("%02X ", buf[f]);
+		}
+		printf("\n");
+	}
 
 	if (buf[0] != 0)
 	{
@@ -168,40 +190,54 @@ int usb_mic_array__vad_request(
 	uint16_t command;
 	uint16_t id;
 	int status;
-		
-	vad_cb = callback;
 	
-	memset(&vadbuf, 0, 16);
-	command = 32;
-	command |= 0x80;
-	command |= 0x40;
-	
-	id = 19;
-		
-	vadtransfer = libusb_alloc_transfer(0);
-		
 	if (vadtransfer == NULL)
 	{
-		printf("Error allocating transfer!!!\n");
-		status = -1;
+#ifdef USB_MIC_ARRAY_VERBOSITY
+		printf("usb_mic_array__vad_request: alloc\n");
+#endif		
+		
+		vad_cb = callback;
+		
+		memset(&vadbuf, 0, 16);
+		command = 32;
+		command |= 0x80;
+		command |= 0x40;
+		
+		id = 19;
+			
+		vadtransfer = libusb_alloc_transfer(0);
+			
+		if (vadtransfer == NULL)
+		{
+			printf("usb_mic_array__vad_request: Error allocating transfer!!!\n");
+			status = -1;
+		}
+		else
+		{
+			libusb_fill_control_setup(vadbuf, 
+				LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_IN,
+				0x00,
+				command,
+				id,
+				8);
+			
+			libusb_fill_control_transfer(vadtransfer,
+				devHandle,
+				vadbuf,
+				usb_mic_array__vad_callback,
+				NULL,
+				1000);
+			
+			status = libusb_submit_transfer(vadtransfer);
+		}
 	}
 	else
 	{
-		libusb_fill_control_setup(vadbuf, 
-			LIBUSB_RECIPIENT_DEVICE | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_IN,
-			0x00,
-			command,
-			id,
-			8);
-		
-		libusb_fill_control_transfer(vadtransfer,
-			devHandle,
-			vadbuf,
-			usb_mic_array__vad_callback,
-			NULL,
-			1000);
-		
-		status = libusb_submit_transfer(vadtransfer);
+#ifdef USB_MIC_ARRAY_VERBOSITY
+		printf("usb_mic_array__vad_request: ignore\n");
+#endif
+		status = -2;
 	}
 	
 	return status;
@@ -216,6 +252,10 @@ int usb_mic_array__vad_process(
 	tv.tv_sec = 0;
 	tv.tv_usec = 0;
 	
+#ifdef USB_MIC_ARRAY_VERBOSITY
+	printf("usb_mic_array__vad_process:\n");
+#endif
+	
 	status = libusb_handle_events_timeout_completed(context, &tv, NULL);
 		
 	return status;
@@ -223,7 +263,15 @@ int usb_mic_array__vad_process(
 
 void usb_mic_array__vad_cleanup()
 {
-	libusb_free_transfer(vadtransfer);
+	if (vadtransfer != NULL)
+	{
+#ifdef USB_MIC_ARRAY_VERBOSITY
+		printf("usb_mic_array__vad_cleanup:\n");
+#endif
+		
+		libusb_free_transfer(vadtransfer);
+		vadtransfer = NULL;
+	}
 }
 
 int usb_mic_array__close_usb_device(
@@ -286,7 +334,7 @@ static int vad_completed = 0;
 
 static void vad_status(int active)
 {
-	printf ("VAD status : %d\n", active);
+	fprintf (stderr, "%d", active);
 	
 	vad_completed = 1;
 }
@@ -298,7 +346,7 @@ int main(void)
 	uint8_t              interfaceNumber; 
 	int success;
 	
-	success = usb_mic_array__find_open_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID);
+	success = usb_mic_array__find_open_usb_device(&devHandle, &context, &interfaceNumber, VENDOR_ID, PRODUCT_ID, 1);
 	
 	printf("Open status: %s.\n", (success != 0) ? "TRUE" : "FALSE");
 

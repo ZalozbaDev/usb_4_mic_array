@@ -10,7 +10,8 @@ int usb_mic_array__find_open_usb_device(
 	libusb_context **context, 
 	uint8_t *interfaceNumber, 
 	uint16_t vendorId, 
-	uint16_t productId);
+	uint16_t productId,
+	uint8_t resetDevice);
 
 int usb_mic_array__vad_request(
 	libusb_device_handle *devHandle,
