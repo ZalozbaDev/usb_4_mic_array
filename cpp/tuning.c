@@ -437,7 +437,7 @@ int main(void)
 
 	int status;
 
-	for (int i = 0; i < 500; i++)
+	for (int i = 0; i < 10; i++)
 	{
 		vad_completed = 0;
 		
