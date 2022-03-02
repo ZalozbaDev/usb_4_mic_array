@@ -20,7 +20,8 @@ int usb_mic_array__vad_request(
 	);
 
 int usb_mic_array__vad_process(
-	libusb_context *context);
+	libusb_context *context,
+	uint32_t frameNo);
 
 void usb_mic_array__vad_cleanup();
 

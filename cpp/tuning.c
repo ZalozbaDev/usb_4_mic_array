@@ -151,7 +151,8 @@ error_out:
 static unsigned char vadbuf[16];
 static struct libusb_transfer *vadtransfer = NULL;
 static usb_mic_array__vad_cb_fn vad_cb;
-static uint32_t vad_frameNumber;
+static uint32_t vad_frameNumber_request;
+static uint32_t vad_frameNumber_process;
 
 static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 {
@@ -175,11 +176,11 @@ static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 
 	if (buf[0] != 0)
 	{
-		vad_cb(1, (int) vad_frameNumber);		
+		vad_cb(1, (int) vad_frameNumber_process);		
 	}
 	else
 	{
-		vad_cb(0, (int) vad_frameNumber);
+		vad_cb(0, (int) vad_frameNumber_process);
 	}
 }
 
@@ -199,8 +200,8 @@ int usb_mic_array__vad_request(
 		printf("usb_mic_array__vad_request: alloc\n");
 #endif		
 		
-		vad_cb          = callback;
-		vad_frameNumber = frameNo;
+		vad_cb                  = callback;
+		vad_frameNumber_request = frameNo;
 		
 		memset(&vadbuf, 0, 16);
 		command = 32;
@@ -247,7 +248,8 @@ int usb_mic_array__vad_request(
 }
 
 int usb_mic_array__vad_process(
-	libusb_context *context
+	libusb_context *context,
+	uint32_t frameNo
 	)
 {
 	int status;
@@ -259,6 +261,8 @@ int usb_mic_array__vad_process(
 	printf("usb_mic_array__vad_process:\n");
 #endif
 	
+	vad_frameNumber_process = frameNo;
+
 	status = libusb_handle_events_timeout_completed(context, &tv, NULL);
 		
 	return status;
