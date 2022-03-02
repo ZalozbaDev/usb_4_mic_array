@@ -176,11 +176,11 @@ static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 
 	if (buf[0] != 0)
 	{
-		vad_cb(1, (int) vad_frameNumber_process);		
+		vad_cb(1, (int) vad_frameNumber_request, (int) vad_frameNumber_process);		
 	}
 	else
 	{
-		vad_cb(0, (int) vad_frameNumber_process);
+		vad_cb(0, (int) vad_frameNumber_request, (int) vad_frameNumber_process);
 	}
 }
 
