@@ -151,6 +151,7 @@ error_out:
 static unsigned char vadbuf[16];
 static struct libusb_transfer *vadtransfer = NULL;
 static usb_mic_array__vad_cb_fn vad_cb;
+static uint32_t vad_frameNumber;
 
 static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 {
@@ -174,17 +175,18 @@ static void usb_mic_array__vad_callback(struct libusb_transfer *transfer)
 
 	if (buf[0] != 0)
 	{
-		vad_cb(1);		
+		vad_cb(1, (int) vad_frameNumber);		
 	}
 	else
 	{
-		vad_cb(0);
+		vad_cb(0, (int) vad_frameNumber);
 	}
 }
 
 int usb_mic_array__vad_request(
 	libusb_device_handle *devHandle,
-	usb_mic_array__vad_cb_fn callback
+	usb_mic_array__vad_cb_fn callback,
+	uint32_t frameNo
 	)
 {
 	uint16_t command;
@@ -197,7 +199,8 @@ int usb_mic_array__vad_request(
 		printf("usb_mic_array__vad_request: alloc\n");
 #endif		
 		
-		vad_cb = callback;
+		vad_cb          = callback;
+		vad_frameNumber = frameNo;
 		
 		memset(&vadbuf, 0, 16);
 		command = 32;

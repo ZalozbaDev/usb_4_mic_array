@@ -3,7 +3,7 @@
 
 #include <libusb-1.0/libusb.h>
 
-typedef void(*usb_mic_array__vad_cb_fn)(int active);
+typedef void(*usb_mic_array__vad_cb_fn)(int active, int frameNr);
 
 int usb_mic_array__find_open_usb_device(
 	libusb_device_handle **devHandle, 
@@ -15,7 +15,8 @@ int usb_mic_array__find_open_usb_device(
 
 int usb_mic_array__vad_request(
 	libusb_device_handle *devHandle,
-	usb_mic_array__vad_cb_fn callback
+	usb_mic_array__vad_cb_fn callback,
+	uint32_t frameNo
 	);
 
 int usb_mic_array__vad_process(
